@@ -1,6 +1,7 @@
 package com.cmexpertise.dabcustomtagslibrary.view;
 
 import android.annotation.TargetApi;
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -25,6 +26,7 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewTreeObserver;
+import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -34,10 +36,14 @@ import androidx.annotation.ColorRes;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import com.cmexpertise.dabcustomtagslibrary.R;
+
+import com.cmexpertise.dabcustomtagslibrary.models.TagModel;
 import com.cmexpertise.dabcustomtagslibrary.resources.ResourceUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 
@@ -89,8 +95,15 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
     private List<TagSpan> mTagSpans = new ArrayList<>();
     private List<Tag> mTags = new ArrayList<>();
 
-    private TagsEditListener mListener;
+
     private List<Tag> tags = new ArrayList<>();
+
+    private List<TagModel> tagModelListMain;
+    private List<TagModel> tagModelListRemoved;
+
+    private ArrayAdapter tagListAdapter;
+    private Activity activity;
+    private int layoutId;
 
     private final TextWatcher mTextWatcher = new TextWatcher() {
         @Override
@@ -108,6 +121,48 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
             }
         }
     };
+
+    public List<TagModel> getTagModelListMain() {
+        return tagModelListMain;
+    }
+
+    public void setTagModelListMain(List<TagModel> tagModelListMain) {
+        this.tagModelListMain = tagModelListMain;
+    }
+
+    public List<TagModel> getTagModelListRemoved() {
+        return tagModelListRemoved;
+    }
+
+    public void setTagModelListRemoved(List<TagModel> tagModelListRemoved) {
+        this.tagModelListRemoved = tagModelListRemoved;
+    }
+
+    public void initializeAdapter(Activity activity, int layoutId, List<TagModel> initialTagModelList){
+
+        this.activity = activity;
+        this.layoutId = layoutId;
+        tagModelListMain = initialTagModelList;
+        tagModelListRemoved = new ArrayList<>();
+
+        resetAdapter();
+    }
+
+    public void resetAdapter(){
+        Collections.sort(tagModelListMain, new Comparator<TagModel>()
+        {
+            @Override
+            public int compare(TagModel lhs, TagModel rhs) {
+                return rhs.getName().compareTo(lhs.getName());
+            }
+        });
+
+
+        tagListAdapter = new ArrayAdapter(
+                activity,
+                layoutId, tagModelListMain);
+        setAdapter(tagListAdapter);
+    }
 
     public List<String> getTags(){
         return convertTagSpanToList(mTagSpans);
@@ -326,9 +381,7 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
         setTags(convertTagSpanToArray(mTagSpans));
     }
 
-    public void setTagsListener(TagsEditListener listener) {
-        mListener = listener;
-    }
+
 
     @ColorInt
     private int getColor(Context context, @ColorRes int colorId) {
@@ -434,9 +487,9 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
 
         mLastString = getText().toString();
         mIsAfterTextWatcherEnabled = true;
-        if (isEnterClicked && mListener != null) {
+        /*if (isEnterClicked && mListener != null) {
             mListener.onEditingFinished();
-        }
+        }*/
     }
 
     private void buildTags(String str) {
@@ -485,12 +538,15 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
             getText().append(sb);
             setMovementMethod(LinkMovementMethod.getInstance());
             setSelection(sb.length());
-            if (mListener != null && !str.equals(mLastString)) {
+
+            onTagsChanged(convertTagSpanToList(mTagSpans),sb.toString(),true);
+
+            /*if (str.equals(mLastString)) {
                 //Log.d("tags_xxxx", "str1 "+str+" lst_str "+mLastString);
-                mListener.onTagsChanged(convertTagSpanToList(mTagSpans),sb.toString(),true);
+                onTagsChanged(convertTagSpanToList(mTagSpans),sb.toString(),true);
             }else{
               //  Log.d("tags_xxxx", "str2 "+str+" lst_str"+mLastString);
-            }
+            }*/
         }
     }
 
@@ -561,8 +617,8 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
             newTag.setPosition(newTag.getPosition() - tagLength);
         }
 
-        if (mListener == null || mTags == null || mTags.size() == 0) return;
-        mListener.onTagsChanged(convertTagSpanToList(mTagSpans),mTags.get(tagIndex).getSource(),false);
+        if (mTags == null || mTags.size() == 0) return;
+        onTagsChanged(convertTagSpanToList(mTagSpans),mTags.get(tagIndex).getSource(),false);
 
         mTags.remove(tagIndex);
         mTagSpans.remove(tagIndex);
@@ -719,25 +775,78 @@ public class TagsEditText extends androidx.appcompat.widget.AppCompatAutoComplet
 
     }
 
-    public interface TagsEditListener {
+    /*public interface TagsEditListener {
 
         void onTagsChanged(List<String> tags, String changedString, boolean isDeleted);
 
         void onEditingFinished();
 
-    }
+    }*/
 
-    public static class TagsEditListenerAdapter implements TagsEditListener {
+     public void onTagsChanged(List<String> tags, String changedString, boolean isDeleted) {
+         try {
+             if(isDeleted){
+                 String isTeamSelected = "FALSE";
+                 Iterator<TagModel> iter = tagModelListMain.iterator();
 
-        @Override
-        public void onTagsChanged(List<String> tags, String changedString, boolean isDeleted) {
+                 Log.d("tags_deleted", "size "+tagModelListMain.size());
 
+                 while (iter.hasNext()) {
+                     TagModel tagModel = iter.next();
+                     if(tags != null && tags.size() >0){
+                         if (tagModel.getName().equalsIgnoreCase(tags.get(tags.size()-1))){
+
+
+                             tagModelListRemoved.add(tagModel);
+                             iter.remove();
+                             Log.d("tags_deleted", "tags size "+tags.size());
+                             Log.d("tags_deleted", "changed "+tagModel.getName());
+                             Log.d("tags_deleted", "changed "+tagModel.getName());
+
+
+                         }
+                     }
+
+                 }
+                 Log.d("tags_deleted", "list size after player selected "+tagModelListMain.size());
+                 Log.d("tags_deleted", "list size after teams filtered "+tagModelListMain.size());
+                 resetAdapter();
+
+             }
+             else{
+                 try {
+                     TagModel chipsInput = new TagModel();
+                     chipsInput.setName(changedString);
+                     Log.d("tags_added", "removed list size "+tagModelListRemoved.size());
+                     Log.d("tags_added", "suggestion list size "+tagModelListMain.size());
+                     Log.d("tags_added", "Tags size "+tags.size());
+
+                     Iterator<TagModel> iter = tagModelListRemoved.iterator();
+
+
+                     while (iter.hasNext()){
+                         TagModel tagModel = iter.next();
+                         if (chipsInput.getName().equalsIgnoreCase(tagModel.getName())) {
+                             chipsInput.setName(tagModel.getName());
+
+                             iter.remove();
+                             Log.d("tags_added", "removing "+chipsInput.getName());
+
+                         }
+
+
+                     }
+
+                     Log.d("tags_added", "suggestion list sizeaftr "+tagModelListMain.size());
+                     Log.d("tags_added", "Removal list sizeaftr "+tagModelListRemoved.size());
+                     resetAdapter();
+                 } catch (Exception e) {
+                     e.printStackTrace();
+                 }
+             }
+         } catch (Exception e) {
+             e.printStackTrace();
+             Log.d("tags_added", "error "+e.toString());
+         }
         }
-
-        @Override
-        public void onEditingFinished() {
-        }
-
-    }
-
 }
